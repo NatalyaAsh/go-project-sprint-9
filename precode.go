@@ -19,12 +19,12 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 	i := int64(1)
 	defer close(ch)
 	for {
-		ch <- i
-		fn(i)
-		i++
 		select {
 		case <-ctx.Done():
-			break
+			return
+		case ch <- i:
+			fn(i)
+			i++
 		}
 	}
 }
@@ -33,9 +33,10 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 func Worker(in <-chan int64, out chan<- int64, id int) {
 	// 2. Функция Worker
 	// ...
+	defer close(out)
 	for v := range in {
 		out <- v
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
 }
 
@@ -76,17 +77,16 @@ func main() {
 	//4. Собираем числа из каналов outs
 	//...
 	output := func(in <-chan int64, i int64) {
-		v, ok := <-in
-		if ok {
+		for v := range in {
 			chOut <- v
 			amounts[i]++
 		}
 		wg.Done()
 	}
 
-	for i := 0; i < NumOut; i++ {
+	for i, out := range outs {
 		wg.Add(1)
-		go output(outs[i], int64(i))
+		go output(out, int64(i))
 	}
 
 	go func() {
